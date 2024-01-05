@@ -88,7 +88,7 @@ class ClientGUI implements Runnable {
                 int filesFound = 0;
                 String path = pathField.getText();
                 Queue<String> pathsToTry = new LinkedList<>(); // Linked-list based queue of paths to try.
-                ArrayList<TransmitFile> fileArrayList = new ArrayList<>(); // Array list for files that will be transmitted.
+                ArrayList<File> fileArrayList = new ArrayList<>(); // Array list for files that will be transmitted.
                 pathsToTry.add(path);
                 FileUtilities fu = new FileUtilities();
                 
@@ -104,7 +104,7 @@ class ClientGUI implements Runnable {
                     if (!curPathFile.isDirectory()) {
                         // This is just a file. Do the single file activities.
                         filesFound++; // Increment the number of files found.
-                        fileArrayList.add(fu.createTransmissionObject(curPathFile, path)); // Add the file to the file array list
+                        fileArrayList.add(curPathFile); // Add the file to the file array list
                         continue; // Don't try the rest of the loop.  
                     }
 
@@ -121,7 +121,7 @@ class ClientGUI implements Runnable {
                             pathsToTry.add(file.getPath()); // We'll enqueue it for processing.
                         } else { // Case 2: It's a file.
                             filesFound++; // Increment the number of files found.
-                            fileArrayList.add(fu.createTransmissionObject(file, path)); // Add the file to the file array list
+                            fileArrayList.add(file); // Add the file to the file array list
                         }
                     }
                 }
@@ -139,10 +139,51 @@ class ClientGUI implements Runnable {
                 int port = Integer.valueOf(portField.getText()); // Add error handling.
                 try {
                     Socket sock = new Socket(host, port);
-                    // Create and transmit the transmission object
-                    Transmission trans = new Transmission(username, password, fileArrayList, filesFound, paths);
+                    // Create the stream to send things on.
                     ObjectOutputStream oos = new ObjectOutputStream(sock.getOutputStream());
-                    oos.writeObject(trans);
+                    // First: Transmit header data under object TransmissionHeader. Include the number of files to wait for.
+                    // IDEA: TODO implement server sending back ERROR/SUCCESS message. 
+                    TransmissionHeader transHead = new TransmissionHeader(username, password, filesFound, paths);
+                    oos.writeObject(transHead);
+                    // Second: Iteratively transmit:
+                        // Each file's header (containing number of sequence transmissions)
+                        // Each sequence transmission. 
+                    for (File file : fileArrayList) {
+                        System.out.println("Processing client for: " + file.getAbsolutePath() + file.isDirectory());
+                        // Transmit the header
+                        // ONLY INCREMENT THE NUMBER OF PACKETS IF NOT ON AN EXACT BOUNDARY!
+                        FileHeader fh = new FileHeader(fu.createShortPath(file.getAbsolutePath(), path), file.getName(), (int) ((file.length() / 512) + ((file.length() % 512 >= 1 || file.length() == 0)? 1 : 0)));
+                        System.out.println("Sending an estimate of: " + (int) ((file.length() / 512) + (file.length() % 512 >= 1 ? 1 : 0)) + " packets.");
+                        oos.writeObject(fh);
+                        // Transmit the packets
+                        int seqNum = 0; // Start at 0
+
+                        FileInputStream fis = new FileInputStream(file);
+                        long fileSize = file.length();
+                        // Chunk into groups of 512 bytes.
+                        int count = 0; // Number of parts read so far.
+
+                        // Latest idea: Each file is broken into chunks (numbered in series) that are sent and reassembled on the other end. 
+                        if (fileSize == 0) {
+                            // Case: A starting empty file.
+                            BytePacket bp = new BytePacket(new byte[0], seqNum++);
+                            oos.writeObject(bp);
+                        }
+                        while (fileSize > 0) {
+                            byte[] moreBytes = new byte[512];
+                            fis.readNBytes(moreBytes, 0, 512);
+                            count++;
+                            BytePacket bp = new BytePacket(moreBytes, seqNum++);
+                            oos.writeObject(bp);
+                            fileSize = fileSize -  (long) 512;
+                            //System.out.println("Count: " + count + "File size: " + fileSize);
+                        }
+                        System.out.println("Actually need: " + count);
+                        
+                        fis.close();
+                    }
+                   // Transmission trans = new Transmission(username, password, fileArrayList, filesFound, paths);
+                    //oos.writeObject(trans);
                     oos.close();
                     System.out.println("Client Side: Sockets Complete!");
                 } catch (Exception exc) {
@@ -172,6 +213,8 @@ class FileUtilities {
             // Chunk into groups of 512 bytes.
             ArrayList<byte[]> fileBytesList = new ArrayList<>();
             int count = 0; // Number of parts read so far.
+            
+            // Latest idea: Each file is broken into chunks (numbered in series) that are sent and reassembled on the other end. 
             while (fileSize > 0) {
                 byte[] moreBytes = new byte[10000000];
                 fis.readNBytes(moreBytes, 0, 10000000);
@@ -194,6 +237,7 @@ class FileUtilities {
     }
     
     public String createShortPath(String longPath, String basePath) {
+        System.out.println("Shorting: " + longPath + " " + basePath);
         return longPath.substring(basePath.length(), longPath.length());
     }
 }

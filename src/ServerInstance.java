@@ -67,11 +67,13 @@ class ClientServerThread extends Thread {
         try {
             InputStream inputStream = clientSocket.getInputStream();
             ObjectInputStream ois = new ObjectInputStream(inputStream);
-            // Read in the Transmission object
-            Transmission trans = (Transmission) ois.readObject();
+            
+            
+            // Read in the TransmissionHeader object
+            TransmissionHeader transHead = (TransmissionHeader) ois.readObject();
             // Check for username/password match (add some handling)
-            String clientUName = trans.getUsername();
-            String clientPassword = trans.getPassword();
+            String clientUName = transHead.getUsername();
+            String clientPassword = transHead.getPassword();
             User current = null; // This is the user who we are trying to update files for.
             for (User u : storeServe.getUsers()) {
                 if (clientUName.equals(u.getUserName())) {
@@ -109,37 +111,34 @@ class ClientServerThread extends Thread {
             // Now, loop through the files and create sub-directories (if they don't already exist).
             // Take advantage of the fact that -- because of the queue -- they are organized in layers.
             // An alternative way (if necessary) would be to transmit an ArrayList or similar to directories to create.
-            for (String path : trans.getPaths()) {
+            for (String path : transHead.getPaths()) {
                 File subDirectory = new File(curPath +  "/" + path);
                 System.out.println("Creating directory: " + curPath + "/" + path);
                 subDirectory.mkdir();
             }
             
-            
-            // Now, actually write the files to the local filesystem.
-            for (TransmitFile tf : trans.getFiles()) {
-                // System.out.println("Size of file byte array: " + tf.getBytes().length);
-                String filePath = curPath.concat("/" + tf.getShortPath()); // We want to replicate the directory structure with short paths.
-                //System.out.println("File Path: " + filePath);
+            // Now, get and re-assemble the files. Write them to the filesystem. 
+            int fileCount = transHead.getFileCount();
+            for (int i = 0; i < fileCount; i++) {
+                // Get the header.
+                FileHeader fileHead = (FileHeader) ois.readObject();
+                System.out.println("Reading in: " + fileHead.getShortPath());
+                String filePath = curPath.concat("/" + fileHead.getShortPath());
                 File uploadSideFile = new File(filePath);
                 // We need to delete the file to avoid appending trouble
                 uploadSideFile.delete();
-                
-                
-                //uploadSideFile.createNewFile(); // We apparently need to create the new file.
                 FileOutputStream fos = new FileOutputStream(uploadSideFile);
-                
-                // Now, write the bytes.
-                ArrayList<byte[]> fileByteList = tf.getBytes();
-                for (byte[] byteArr : fileByteList) {
-                    fos.write(byteArr);
+                System.out.println("Expected Packet Count: " + fileHead.getPacketCount());
+                for (int j = 0; j < fileHead.getPacketCount(); j++) {
+                    System.out.println("Got packet: " + j);
+                    BytePacket bytePack = (BytePacket) ois.readObject();
+                    fos.write(bytePack.getByteArr());
                 }
-                //fos.write(tf.getBytes()); // Write the bytes. 
+                // We're done writing. Close the writing.
                 fos.close();
             }
-            
             // Kill the object input stream -- the transmission is over.
-            System.out.println("File transactions for " + clientUName + " are complete. " + trans.getFileCount() + " files transmitted.");
+            System.out.println("File transactions for " + clientUName + " are complete. " + transHead.getFileCount() + " files transmitted.");
             ois.close();
             return; // Kill the thread. 
             
