@@ -1,13 +1,14 @@
 import java.io.Serializable;
+import java.util.ArrayList;
 
 public class TransmitFile implements Serializable {
     private String shortPath;
     private String name;
-    private byte[] bytes;
-    TransmitFile(String shortPath, String name, byte[] bytes) {
+    private ArrayList<byte[]> fileBytesList;
+    TransmitFile(String shortPath, String name, ArrayList<byte[]> fileBytesList) {
         this.shortPath = shortPath;
         this.name = name;
-        this.bytes = bytes;
+        this.fileBytesList = fileBytesList;
     }
     
     public String getShortPath() {
@@ -18,7 +19,7 @@ public class TransmitFile implements Serializable {
         return name;
     }
     
-    public byte[] getBytes() {
-        return bytes;
+    public ArrayList<byte[]> getBytes() {
+        return fileBytesList;
     }
 }

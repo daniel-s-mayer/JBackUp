@@ -165,12 +165,28 @@ class FileUtilities {
         String name = file.getName();
         // Create the byte array
         try {
+            System.out.println("Processing: " + file.getName());
+            // USE APPEND TO RE-COMBINE THE VARIOUS SETS OF BYTES!
             FileInputStream fis = new FileInputStream(file);
-            byte[] bytes = new byte[9999];
-            fis.readNBytes(bytes, 0, 9999);
+            long fileSize = file.length();
+            // Chunk into groups of 512 bytes.
+            ArrayList<byte[]> fileBytesList = new ArrayList<>();
+            int count = 0; // Number of parts read so far.
+            while (fileSize > 0) {
+                byte[] moreBytes = new byte[10000000];
+                fis.readNBytes(moreBytes, 0, 10000000);
+                count++;
+                fileBytesList.add(moreBytes);
+                //System.out.println("Upper file size: " + fileSize);
+                fileSize = fileSize -  (long) 10000000;
+                System.out.println("Count: " + count + "File size: " + fileSize);
+            }
+            //byte[] bytes = new byte[9999];
+            //fis.readNBytes(bytes, 0, 9999);
             fis.close();
-            return new TransmitFile(shortPath, name, bytes);
+            return new TransmitFile(shortPath, name, fileBytesList);
         } catch (Exception e) {
+            e.printStackTrace();
             JOptionPane.showMessageDialog(null, "Fatal error. Try again.");
             return null; // Add null checks for error case. 
         }

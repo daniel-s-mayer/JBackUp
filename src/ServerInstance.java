@@ -1,6 +1,7 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
 
 public class ServerInstance {
     private StorageServer storeServe;
@@ -121,9 +122,19 @@ class ClientServerThread extends Thread {
                 String filePath = curPath.concat("/" + tf.getShortPath()); // We want to replicate the directory structure with short paths.
                 //System.out.println("File Path: " + filePath);
                 File uploadSideFile = new File(filePath);
+                // We need to delete the file to avoid appending trouble
+                uploadSideFile.delete();
+                
+                
                 //uploadSideFile.createNewFile(); // We apparently need to create the new file.
                 FileOutputStream fos = new FileOutputStream(uploadSideFile);
-                fos.write(tf.getBytes()); // Write the bytes. 
+                
+                // Now, write the bytes.
+                ArrayList<byte[]> fileByteList = tf.getBytes();
+                for (byte[] byteArr : fileByteList) {
+                    fos.write(byteArr);
+                }
+                //fos.write(tf.getBytes()); // Write the bytes. 
                 fos.close();
             }
             
