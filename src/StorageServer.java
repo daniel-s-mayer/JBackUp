@@ -27,6 +27,14 @@ public class StorageServer implements Serializable {
         users.add(newUser);
     }
     
+    public void setPort(int port) {
+        this.port = port;
+    }
+    
+    public void setStorageDirectory(String storageDirectory) {
+        this.storageDirectory = storageDirectory;
+    }
+    
     public void removeUser(User remUser) {
         users.remove(remUser);
     }

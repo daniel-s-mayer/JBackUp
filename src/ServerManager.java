@@ -1,11 +1,9 @@
 import javax.swing.*;
-import javax.swing.border.Border;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
 import java.io.*;
+import java.util.Arrays;
 
 public class ServerManager {
     public static void main(String[] args) {
@@ -30,21 +28,49 @@ class ServerGUI implements Runnable {
         mainFrame.setSize(800, 800);
         // Create the stop/start/restart menu bar
         JMenuBar menuBar = new JMenuBar();
-        JMenuItem stopButton = new JMenuItem("Stop Server");
-        JMenuItem startButton = new JMenuItem("Start Server");
-        JMenuItem restartButton = new JMenuItem("Restart Server");
+        JButton stopButton = new JButton("Stop Server");
+        JButton startButton = new JButton("Start Server");
+        JButton restartButton = new JButton("Restart Server");
         menuBar.add(stopButton);
         menuBar.add(startButton);
         menuBar.add(restartButton);
         mainFrame.setJMenuBar(menuBar);
         
+        
+        // Handle the starting and stopping of the server.
+        ServerInstance sm = new ServerInstance(storeServ);
+        stopButton.setEnabled(false);
+        restartButton.setEnabled(false);
+        
         startButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                ServerInstance sm = new ServerInstance(storeServ);
+                sm.startInstance();
+                startButton.setEnabled(false);
+                stopButton.setEnabled(true);
+                restartButton.setEnabled(true);
+                //startButton.
+            }
+        });
+        stopButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                sm.stopInstance();
+                startButton.setEnabled(true);
+                stopButton.setEnabled(false);
+                restartButton.setEnabled(false);
+            }
+        });
+        
+        restartButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                sm.stopInstance();
                 sm.startInstance();
             }
         });
+        
+        
         
         
         // Main screen layout
@@ -66,76 +92,151 @@ class ServerGUI implements Runnable {
         mainPanel.add(manageServerSettings);
         
         // Server settings panel
-        JPanel serverSettingsPanel = new JPanel(new GridLayout(3, 0));
+        JPanel serverSettingsPanel = new JPanel();
+        serverSettingsPanel.setLayout(new BoxLayout(serverSettingsPanel, BoxLayout.PAGE_AXIS));
         JPanel portRow = new JPanel();
         JPanel pathRow = new JPanel();
         JPanel savePanel = new JPanel();
         JLabel portLabel = new JLabel("Port:");
         JLabel pathLabel = new JLabel("Path:");
         JTextField portEntry = new JTextField("", 15);
-        JTextField pathEntry = new JTextField("", 15);
+        JFileChooser pathChooser = new JFileChooser();
+        JButton chooseDirectory = new JButton("Choose Storage Directory");
+        chooseDirectory.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // ** TODO Add error handling. 
+                pathChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                pathChooser.setSelectedFile(new File(storeServ.getStorageDirectory()));
+                pathChooser.showOpenDialog(serverSettingsPanel);
+            }
+        });
+        
+        
+        //JTextField pathEntry = JFileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY)// new JTextField("", 15);
+        // Pre-Set Text
+        //pathEntry.setText(storeServ.getStorageDirectory());
+        portEntry.setText(String.valueOf(storeServ.getPort()));
         JButton backButton = new JButton("Back");
         JButton saveButton = new JButton("Save");
         portRow.add(portLabel);
         portRow.add(portEntry);
         pathRow.add(pathLabel);
-        pathRow.add(pathEntry);
+        pathRow.add(chooseDirectory);
         savePanel.add(backButton);
         savePanel.add(saveButton);
         serverSettingsPanel.add(portRow);
         serverSettingsPanel.add(pathRow);
         serverSettingsPanel.add(savePanel);
         JPanel containerPanel = new JPanel();
-        serverSettingsPanel.setPreferredSize(new Dimension(300, 200));
+        serverSettingsPanel.setPreferredSize(new Dimension(600, 200));
         containerPanel.add(serverSettingsPanel);
         
+        saveButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Value check: Make sure that the port is valid.
+                int port = 0;
+                try {
+                    port = Integer.valueOf(portEntry.getText());
+                    if (port < 0 || port > 100000) {
+                        throw new RuntimeException();
+                    }
+                } catch (Exception exc) {
+                    JOptionPane.showMessageDialog(null, "Error! Check your port number.");
+                    return;
+                }
+                File selectedDirectory = pathChooser.getSelectedFile();
+                // Save the values.
+                storeServ.setPort(port);
+                storeServ.setStorageDirectory(selectedDirectory.getAbsolutePath());
+                ServerUtilities su = new ServerUtilities();
+                su.dumpToFilesystem(storeServ);
+                if (sm.getStatus()) {
+                    sm.stopInstance();
+                    sm.startInstance();
+                }
+            }
+        });
+        
+        
+        
         // Users panel
-        JPanel userContentPanel = new JPanel();
+        JButton addUserButton = new JButton("Add User");
+        JButton backAddUserButton = new JButton("Back");
+        JPanel userControlsPanel = new JPanel();
+        userControlsPanel.add(backAddUserButton);
+        userControlsPanel.add(addUserButton);
+        JPanel userContentPanel = new JPanel(new BorderLayout());
         JPanel userListPanel = new JPanel();
         userListPanel.setLayout(new BoxLayout(userListPanel, BoxLayout.PAGE_AXIS));
         ServerUtilities su = new ServerUtilities();
-        for (User user : storeServ.getUsers()) {
-            System.out.println("SU");
-            JPanel userJPanel = su.generateUserJPanel(user, storeServ, userListPanel);
-            userListPanel.add(userJPanel);
-        }
+        su.processChange(sm, storeServ, userContentPanel, mainFrame, userControlsPanel);
         
-        // Add user button
-        JButton addUserButton = new JButton("Add User");
+
         addUserButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                JPanel newUserDataPanel = new JPanel(new GridLayout(0, 1));
-                JPanel nameRow = new JPanel();
-                JPanel usernameRow = new JPanel();
-                JPanel passwordRow = new JPanel();
-                nameRow.add(new JLabel("Name:"));
-                JTextField nameTextField = new JTextField("", 20);
-                nameRow.add(nameTextField);
-                usernameRow.add(new JLabel("Username:"));
-                JTextField usernameTextField = new JTextField("", 20);
-                usernameRow.add(usernameTextField);
-                passwordRow.add(new JLabel("Password:"));
-                JTextField passwordField = new JPasswordField("", 20);
-                passwordRow.add(passwordField);
-                newUserDataPanel.add(nameRow);
-                newUserDataPanel.add(usernameRow);
-                newUserDataPanel.add(passwordRow);
-                JOptionPane.showConfirmDialog(null, newUserDataPanel);
-                
-                // After submission, create the new user
-                User newUser = new User(nameTextField.getText(), usernameTextField.getText(), passwordField.getText());
-                storeServ.addUser(newUser);
-                su.dumpToFilesystem(storeServ);
-                JPanel userJPanel = su.generateUserJPanel(newUser, storeServ, userListPanel);
-                userListPanel.add(userJPanel);
-                userJPanel.repaint();
-                
+                // Create the JOptionPane to take input of the new user's information.
+                while (true) {
+                    JPanel newUserDataPanel = new JPanel(new GridLayout(0, 1));
+                    JPanel nameRow = new JPanel();
+                    JPanel usernameRow = new JPanel();
+                    JPanel passwordRow = new JPanel();
+                    nameRow.add(new JLabel("Name:"));
+                    JTextField nameTextField = new JTextField("", 20);
+                    nameRow.add(nameTextField);
+                    usernameRow.add(new JLabel("Username:"));
+                    JTextField usernameTextField = new JTextField("", 20);
+                    usernameRow.add(usernameTextField);
+                    passwordRow.add(new JLabel("Password:"));
+                    JPasswordField passwordField = new JPasswordField("", 20);
+                    passwordRow.add(passwordField);
+                    newUserDataPanel.add(nameRow);
+                    newUserDataPanel.add(usernameRow);
+                    newUserDataPanel.add(passwordRow);
+                    int paneResult = JOptionPane.showConfirmDialog(null, newUserDataPanel, "New User Details", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+                    if (paneResult == 0) {
+                        // The user clicked OK.
+                        // Validate inputs
+                        String fullName = nameTextField.getText();
+                        String userName = usernameTextField.getText();
+                        String passwordString = new String(passwordField.getPassword());
+                        boolean passed = true; // This will be changed if any test fails.
+                        // Dup check
+                        for (User u : storeServ.getUsers()) {
+                            if (u.getUserName().equals(userName)) {
+                                passed = false;
+                            }
+                        }
+                        // Length check
+                        if (userName.length() < 1) {
+                            passed = false;
+                        }
+                        if (passwordString.length() < 6) {
+                            passed = false;
+                        }
+                        
+                        // Use the checks
+                        if (passed) {
+                            User newUser = new User(fullName, userName, passwordString);
+                            storeServ.addUser(newUser);
+                            su.dumpToFilesystem(storeServ);
+                            su.processChange(sm, storeServ, userContentPanel, mainFrame, userControlsPanel);
+                            break;
+                        } else {
+                            JOptionPane.showMessageDialog(null, "Error: Your username/password are invalid. Try again.");
+                        }
+                        
+                    } else {
+                        break; // The user selected a stopping option. 
+                    }
+                }
+               
                 
             }
         });
         
-        userContentPanel.add(addUserButton);
         /*JPanel userGrid = new JPanel(new GridLayout(0, 1));
         User[] users = new User[4];
         JList<User> userList = new JList<User>(users);
@@ -167,7 +268,6 @@ class ServerGUI implements Runnable {
         userButtonsPanel.add(btnPanel2);
         userContentPanel.add(userButtonsPanel);
         */
-         userContentPanel.add(userListPanel);
         // Click actions
         manageServerSettings.addActionListener(new ActionListener() {
             @Override
@@ -190,6 +290,13 @@ class ServerGUI implements Runnable {
                 mainFrame.setVisible(true);
             }
         });
+        backAddUserButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                mainFrame.setContentPane(mainPanel);
+                mainFrame.setVisible(true);
+            }
+        });
         
         
 
@@ -199,9 +306,7 @@ class ServerGUI implements Runnable {
         mainFrame.setVisible(true);
     }
     
-    static void changeUserPassword(StorageServer storeServ, User user) {
-        
-    }
+
    
 }
 
@@ -261,29 +366,88 @@ class ServerUtilities {
         this.dumpToFilesystem(storeServ);
     }
     
-    public void changeUserPassword(StorageServer storeServ, User user) {
-        user.editPassword(JOptionPane.showInputDialog("Enter a new password:"));
-        this.dumpToFilesystem(storeServ);
+    public void changeUserPassword(ServerInstance sm, StorageServer storeServ, User user) {
+        while (true) {
+            // Use an infinite loop to continue asking the user for a valid password until a valid password is entered. 
+            JPanel newPassPanel = new JPanel();
+            JPasswordField JNewPasswordField = new JPasswordField("", 20);
+            JLabel newPasswordFieldLabel = new JLabel("New Password: ");
+            newPassPanel.add(newPasswordFieldLabel);
+            newPassPanel.add(JNewPasswordField);
+            int inputResult = JOptionPane.showConfirmDialog(null, newPassPanel, "New Password Input", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (inputResult == 0) {
+                // This means that OK was selected.
+                String fieldInput = new String(JNewPasswordField.getPassword());
+                if (fieldInput.length() < 6) {
+                    JOptionPane.showMessageDialog(null, "Error: Password does not meet minimum requirements.");
+                    continue;
+                }
+                System.out.println("Stored: " + fieldInput);
+                user.editPassword(fieldInput);
+                this.dumpToFilesystem(storeServ);
+                if (sm.getStatus()) {
+                    // This way, we only restart the server if its already running.
+                    sm.stopInstance();
+                    sm.startInstance();
+                }
+                break;
+            } else {
+                // The user wants to cancel
+                break;
+            }
+        }
+        
+        
+        
     }
     
-    public JPanel generateUserJPanel(User user, StorageServer storeServ, JPanel userListPanel) {
+    public JPanel generateUserJPanel(ServerInstance sm, User user, StorageServer storeServ, JPanel userContentPanel, JFrame mainFrame, JPanel userControlsPanel) {
         JPanel userJPanel = new JPanel();
         userJPanel.add(new JLabel(user.getName() + " " + user.getUserName()));
         JButton deleteUser = new JButton("Delete User");
         JButton changePassword = new JButton("Change User Password");
+        userJPanel.add(deleteUser);
+        userJPanel.add(changePassword);
         deleteUser.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 deleteUserAction(storeServ, user);
-                userListPanel.remove(userJPanel);
+                processChange(sm, storeServ, userContentPanel, mainFrame, userControlsPanel);
             }
         });
         changePassword.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                changeUserPassword(storeServ, user);
+                changeUserPassword(sm, storeServ, user);
             }
         });
         return userJPanel;
+    }
+    
+    public void processChange(ServerInstance sm, StorageServer storeServ, JPanel userContentPanel, JFrame mainFrame, JPanel userControlsPanel) {
+        JPanel userListPanel = new JPanel();
+        userListPanel.setLayout(new BoxLayout(userListPanel, BoxLayout.Y_AXIS));
+        for (User u : storeServ.getUsers()) {
+            JPanel userJPanel = this.generateUserJPanel(sm, u, storeServ, userContentPanel, mainFrame, userControlsPanel);
+            userJPanel.setPreferredSize(new Dimension(500, 50));
+            userListPanel.add(userJPanel);
+        }
+        JPanel view = new JPanel();
+        JScrollPane jsp = new JScrollPane();
+        jsp.setPreferredSize(new Dimension(1000, 500));
+        jsp.setViewportView(view);
+        view.add(userListPanel);
+        userContentPanel.removeAll();
+        userContentPanel.repaint();
+        userContentPanel.add(userControlsPanel, BorderLayout.NORTH);
+        userContentPanel.add(jsp, BorderLayout.CENTER);//userListPanel, BorderLayout.CENTER);
+        mainFrame.setVisible(true);
+        // Now, we also need to restart the server so that the update takes effect.
+        if (sm.getStatus()) {
+            // This conditional means that we only restart if it's already running.
+            sm.stopInstance();
+            sm.startInstance();
+        }
+       
     }
 }

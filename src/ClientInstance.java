@@ -2,10 +2,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -45,9 +42,20 @@ class ClientGUI implements Runnable {
         passwordRow.add(passwordField);
         // Set up the path row
         JLabel pathLabel = new JLabel("Path:");
-        JTextField pathField = new JTextField("", 20);
+        //JTextField pathField = new JTextField("", 20);
+        JButton showPathChooser = new JButton("Choose Directory");
+        JFileChooser jfc = new JFileChooser();
+        jfc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+
+
+        showPathChooser.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+               jfc.showOpenDialog(clientFrame);
+            }
+        });
         pathRow.add(pathLabel);
-        pathRow.add(pathField);
+        pathRow.add(showPathChooser);
         // Set up the address row
         JLabel addressLabel = new JLabel("Server Address:");
         JTextField addressField = new JTextField("", 20);
@@ -86,7 +94,20 @@ class ClientGUI implements Runnable {
             @Override
             public void actionPerformed(ActionEvent e) {
                 int filesFound = 0;
-                String path = pathField.getText();
+                int port = 0;
+                String path = "";
+                try {
+                    File chosenDirectory = jfc.getSelectedFile();
+                    path = chosenDirectory.getAbsolutePath();
+                    port = Integer.valueOf(portField.getText()); // Add error handling.
+                    if (port < 0) {
+                        throw new RuntimeException("Negative port numbers not permitted!");
+                    }
+                } catch (Exception exc) {
+                    JOptionPane.showMessageDialog(clientFrame, "Error: " + exc.getMessage());
+                    return;
+                }
+
                 Queue<String> pathsToTry = new LinkedList<>(); // Linked-list based queue of paths to try.
                 ArrayList<File> fileArrayList = new ArrayList<>(); // Array list for files that will be transmitted.
                 pathsToTry.add(path);
@@ -136,15 +157,29 @@ class ClientGUI implements Runnable {
                 String host = addressField.getText();
                 String username = usernameField.getText();
                 String password = passwordField.getText();
-                int port = Integer.valueOf(portField.getText()); // Add error handling.
+               
                 try {
                     Socket sock = new Socket(host, port);
                     // Create the stream to send things on.
                     ObjectOutputStream oos = new ObjectOutputStream(sock.getOutputStream());
                     // First: Transmit header data under object TransmissionHeader. Include the number of files to wait for.
-                    // IDEA: TODO implement server sending back ERROR/SUCCESS message. 
                     TransmissionHeader transHead = new TransmissionHeader(username, password, filesFound, paths);
                     oos.writeObject(transHead);
+                    
+                    // IDEA: TODO implement server sending back ERROR/SUCCESS message. 
+                    ObjectInputStream ois = new ObjectInputStream(sock.getInputStream());
+                    boolean success = ois.readBoolean();
+                    System.out.println("Read!");
+                    
+                    if (!success) {
+                        JOptionPane.showMessageDialog(null, "Username/Password Incorrect! Try again.");
+                        return;
+                    }
+                    
+                    
+                    
+                    
+                    
                     // Second: Iteratively transmit:
                         // Each file's header (containing number of sequence transmissions)
                         // Each sequence transmission. 
@@ -188,7 +223,7 @@ class ClientGUI implements Runnable {
                     System.out.println("Client Side: Sockets Complete!");
                 } catch (Exception exc) {
                     exc.printStackTrace();
-                    JOptionPane.showMessageDialog(null, "Connection or transmission error. Check inputs and try again.");
+                    JOptionPane.showMessageDialog(clientFrame, "Connection or transmission error. Check inputs and try again.");
                 }
             
             }

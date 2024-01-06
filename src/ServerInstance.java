@@ -6,14 +6,20 @@ import java.util.ArrayList;
 public class ServerInstance {
     private StorageServer storeServe;
     private Thread serverThread;
+    
+    private ServerSocket receiving;
+    
+    private boolean status; // True if running, false if stopped
     ServerInstance(StorageServer storeServe) {
         this.storeServe = storeServe;
     }
     
     public void startInstance() {
-        serverThread = new Thread(new ServerThread(storeServe));
         try {
+            receiving = new ServerSocket(storeServe.getPort());
+            serverThread = new Thread(new ServerThread(storeServe, receiving));
             serverThread.start();
+            status = true; // Now it's running.
         } catch (Exception e) {
             System.out.println("E");
         }
@@ -21,31 +27,45 @@ public class ServerInstance {
     }
     
     public void stopInstance() {
+        System.out.println("Stop requested!");
         try {
-            serverThread.interrupt();
+            // If receiving is null, we don't need to worry -- there's no socket yet. 
+            if (receiving != null) {
+                receiving.close();
+            }
+            status = false; // Now it's not running.
         } catch (Exception e) {
-            System.out.println("Couldn't stop!");
+            e.printStackTrace();
         }
+    }
+    
+    
+    public boolean getStatus() {
+        return status;
     }
 }
 
 class ServerThread implements Runnable {
     // This will set up the listener server. 
     StorageServer storeServe;
-    ServerThread(StorageServer storeServe) {
+    ServerThread(StorageServer storeServe, ServerSocket receiving) {
         this.storeServe = storeServe;
+        this.receiving = receiving;
     }
+    private ServerSocket receiving;
+   
     @Override
     public void run() {
         try {
             System.out.println("Port: " + storeServe.getPort());
-            ServerSocket receiving = new ServerSocket(storeServe.getPort());
             while (true) {
                 Socket client = receiving.accept();
                 System.out.println(client.toString());
                 // Now, create a new thread for the client.
                 ClientServerThread cst = new ClientServerThread(client, storeServe);
                 cst.start();
+                System.out.println("LOOPED");
+                
                 
                 
             }
@@ -64,6 +84,7 @@ class ClientServerThread extends Thread {
         this.storeServe = storeServe;
     }
     public void run() {
+        
         try {
             InputStream inputStream = clientSocket.getInputStream();
             ObjectInputStream ois = new ObjectInputStream(inputStream);
@@ -75,18 +96,28 @@ class ClientServerThread extends Thread {
             String clientUName = transHead.getUsername();
             String clientPassword = transHead.getPassword();
             User current = null; // This is the user who we are trying to update files for.
+            ObjectOutputStream returnStatus = new ObjectOutputStream(clientSocket.getOutputStream());
             for (User u : storeServe.getUsers()) {
                 if (clientUName.equals(u.getUserName())) {
                     // There was a username match.
                     if (clientPassword.equals(u.getPassword())) {
                         // Complete match.
                         current = u;
+                        System.out.println("AUTH SUCCESS");
+                        returnStatus.writeBoolean(true);
+                        returnStatus.flush();
+                        System.out.println("Sent");
+                        //returnStatus.close();
                         break; // No more looping
-                    } else {
-                        // Password error. (TODO add handling)
-                        System.exit(403);
-                    }
+                    } 
                 }
+            }
+            
+            if (current == null) {
+                System.out.println("NO AUTH!");
+                returnStatus.writeBoolean(false);
+                returnStatus.flush();
+                return;
             }
             
             // A simple null check -- terminate (the thread) if current is null.
@@ -153,3 +184,5 @@ class ClientServerThread extends Thread {
         
     }
 }
+
+
