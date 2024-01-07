@@ -1,188 +1,234 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
 
+/**
+ * Class to create new ServerInstances on which the backup server is run.
+ */
 public class ServerInstance {
     private StorageServer storeServe;
     private Thread serverThread;
-    
+
     private ServerSocket receiving;
-    
+
     private boolean status; // True if running, false if stopped
+
+    /**
+     * Constructor for ServerInstance objects.
+     * @param storeServe The StorageServer to base the new ServerInstance on.
+     */
     ServerInstance(StorageServer storeServe) {
         this.storeServe = storeServe;
     }
-    
+
+    /**
+     * Starts the underlying backup server from a pre-constructed
+     * ServerInstance.
+     */
     public void startInstance() {
         try {
+            // Create a ServerSocket to receive client messages on, send it to a
+            // new thread, and start that thread. The new thread will handle all
+            // communication-related taks.s
             receiving = new ServerSocket(storeServe.getPort());
             serverThread = new Thread(new ServerThread(storeServe, receiving));
             serverThread.start();
-            status = true; // Now it's running.
+            status = true; // The server is now running.
         } catch (Exception e) {
-            System.out.println("E");
+            // Don't do anything, as the user may want to try again.
         }
-        System.out.println("Ret");
     }
-    
+
+    /**
+     * Stop the server underlying this instance.
+     */
     public void stopInstance() {
-        System.out.println("Stop requested!");
         try {
-            // If receiving is null, we don't need to worry -- there's no socket yet. 
+            // If receiving is null, we don't need to worry -- there's no socket
+            // yet.
             if (receiving != null) {
+                // Close the socket to force the threads to unlock.
                 receiving.close();
             }
-            status = false; // Now it's not running.
+            status = false; // The server is now stopped.
         } catch (Exception e) {
-            e.printStackTrace();
+            // Don't do anything, as the user may want to try again.
         }
     }
-    
-    
+
+    /**
+     * Returns the status (true = running, false = stopped) of the server
+     * underlying the instance.
+     * @return The status of the underlying server.
+     */
     public boolean getStatus() {
         return status;
     }
 }
 
+/**
+ * Thread on which connection management (incl. waiting for connections on the
+ * server port) occurs.
+ */
 class ServerThread implements Runnable {
-    // This will set up the listener server. 
     StorageServer storeServe;
+    private ServerSocket receiving;
+
+    /**
+     * Constructor for new ServerThreads.
+     * @param storeServe The StorageServer object containing the settings for
+     *     the underlying server.
+     * @param receiving The socket on which messages from the client will be
+     *     received.
+     */
     ServerThread(StorageServer storeServe, ServerSocket receiving) {
         this.storeServe = storeServe;
         this.receiving = receiving;
     }
-    private ServerSocket receiving;
-   
+
+    /**
+     * The interface-required run() method for the thread.
+     */
     @Override
     public void run() {
         try {
-            System.out.println("Port: " + storeServe.getPort());
+            // Use a while loop to accept connections one after another if
+            // multiple clients want to connect.
             while (true) {
+                // Wait until a client tries to connect, then accept it.
                 Socket client = receiving.accept();
-                System.out.println(client.toString());
                 // Now, create a new thread for the client.
-                ClientServerThread cst = new ClientServerThread(client, storeServe);
+                ClientServerThread cst =
+                        new ClientServerThread(client, storeServe);
                 cst.start();
-                System.out.println("LOOPED");
-                
-                
-                
             }
         } catch (IOException e) {
+            // This is a serious error, so throw a RuntimeException to inform
+            // the user.
             throw new RuntimeException(e);
         }
-
     }
 }
 
+/**
+ * Thread on which file processing and authentication occur.
+ */
 class ClientServerThread extends Thread {
     Socket clientSocket;
     StorageServer storeServe;
+
+    /**
+     * Constructor for ClientServerThreads.
+     * @param clientSocket The socket on which the client has connected.
+     * @param storeServe The StorageServer containing settings for the current
+     *     server.
+     */
     ClientServerThread(Socket clientSocket, StorageServer storeServe) {
         this.clientSocket = clientSocket;
         this.storeServe = storeServe;
     }
+
+    /**
+     * Interface-required run() method.
+     */
     public void run() {
-        
+        // Begin receiving files from the client.
         try {
+            // Create the InputStream for the client.
             InputStream inputStream = clientSocket.getInputStream();
             ObjectInputStream ois = new ObjectInputStream(inputStream);
-            
-            
             // Read in the TransmissionHeader object
-            TransmissionHeader transHead = (TransmissionHeader) ois.readObject();
-            // Check for username/password match (add some handling)
+            TransmissionHeader transHead =
+                    (TransmissionHeader) ois.readUnshared();
+            // Extract the Username/Password.
             String clientUName = transHead.getUsername();
             String clientPassword = transHead.getPassword();
-            User current = null; // This is the user who we are trying to update files for.
-            ObjectOutputStream returnStatus = new ObjectOutputStream(clientSocket.getOutputStream());
+            User current =
+                    null; // This is the user who we are trying to update files for.
+            // Create a new ObjectOutputStream to send the authentication result
+            // back to the client.
+            ObjectOutputStream returnStatus =
+                    new ObjectOutputStream(clientSocket.getOutputStream());
             for (User u : storeServe.getUsers()) {
-                if (clientUName.equals(u.getUserName())) {
-                    // There was a username match.
-                    if (clientPassword.equals(u.getPassword())) {
-                        // Complete match.
-                        current = u;
-                        System.out.println("AUTH SUCCESS");
-                        returnStatus.writeBoolean(true);
-                        returnStatus.flush();
-                        System.out.println("Sent");
-                        //returnStatus.close();
-                        break; // No more looping
-                    } 
+                if (clientUName.equals(u.getUserName())
+                        && clientPassword.equals(u.getPassword())) {
+                    // Username and password matched.
+                    current = u;
+                    // Notify the client of the successful auth.
+                    returnStatus.writeBoolean(true);
+                    returnStatus.flush();
+                    break; // No more looping
                 }
             }
-            
+
+            // Case: No matching user was found.
             if (current == null) {
-                System.out.println("NO AUTH!");
+                // Notify the client of the unsuccessful auth.
                 returnStatus.writeBoolean(false);
                 returnStatus.flush();
+                // Return -- this thread must be killed so that a new one can be
+                // created when the user tries to re-connect.
                 return;
             }
-            
-            // A simple null check -- terminate (the thread) if current is null.
-            if (current == null) {
-                return;
-            }
-            
-            // Now, use current to get the path to use.
+
+            // Get the storage path for the files that will be received by
+            // combining the base path and the username of the connected user.
             String curPath = storeServe.getStorageDirectory();
-            if (curPath.charAt(curPath.length() - 1) == '/' || curPath.charAt(curPath.length() - 1) == '\\') {
-                // It ends in a slash
-                curPath = curPath.concat(current.getUserName()); // Add the username of the current user for storage purposes.
+            if (curPath.charAt(curPath.length() - 1) == '/'
+                    || curPath.charAt(curPath.length() - 1) == '\\') {
+                // Case: The base path ends in a slash.
+                curPath = curPath.concat(current.getUserName());
             } else {
-                // It doesn't end in a slash.
+                // Case: The base path does not end in a slash.
                 curPath = curPath.concat("/" + current.getUserName());
             }
-            
+
             // Create the user directory if it doesn't already exist.
-            File userDirectory = new File(curPath); // The client username was pre-concatenated.
+            File userDirectory = new File(curPath);
             userDirectory.mkdir();
-            
-            // Now, loop through the files and create sub-directories (if they don't already exist).
-            // Take advantage of the fact that -- because of the queue -- they are organized in layers.
-            // An alternative way (if necessary) would be to transmit an ArrayList or similar to directories to create.
+
+            // Go through each of the paths transmitted in the header (which
+            // will be in "tree" order because of their construction with a
+            // queue) and create these directories (if they don't already
+            // exist).
             for (String path : transHead.getPaths()) {
-                File subDirectory = new File(curPath +  "/" + path);
-                System.out.println("Creating directory: " + curPath + "/" + path);
+                File subDirectory = new File(curPath + "/" + path);
                 subDirectory.mkdir();
             }
-            
-            // Now, get and re-assemble the files. Write them to the filesystem. 
+
+            // Get the number of files that are expected to be received.
+            // Loop that number of times, reading a FileHeader and the file
+            // contents each time. Re-assemble and store each file.
             int fileCount = transHead.getFileCount();
             for (int i = 0; i < fileCount; i++) {
-                // Get the header.
-                FileHeader fileHead = (FileHeader) ois.readObject();
-                System.out.println("Reading in: " + fileHead.getShortPath());
+                // Read the FileHeader for this file from the ObjectInputStream.
+                FileHeader fileHead = (FileHeader) ois.readUnshared();
+                // Make the server-side storage path for the file.
                 String filePath = curPath.concat("/" + fileHead.getShortPath());
                 File uploadSideFile = new File(filePath);
-                // We need to delete the file to avoid appending trouble
+                // Delete the file to avoid corrupting it -- we will be
+                // REPLACING the existing file.
                 uploadSideFile.delete();
+                // Initialize an OutputStream for the file being backed up.
                 FileOutputStream fos = new FileOutputStream(uploadSideFile);
-                System.out.println("Expected Packet Count: " + fileHead.getPacketCount());
+                // Go through each packet in the file, retrieving it and
+                // appending it to the server-side backup file.
                 for (int j = 0; j < fileHead.getPacketCount(); j++) {
-                    System.out.println("Got packet: " + j);
-                    BytePacket bytePack = (BytePacket) ois.readObject();
+                    BytePacket bytePack = (BytePacket) ois.readUnshared();
                     fos.write(bytePack.getByteArr());
                 }
                 // We're done writing. Close the writing.
                 fos.close();
             }
             // Kill the object input stream -- the transmission is over.
-            System.out.println("File transactions for " + clientUName + " are complete. " + transHead.getFileCount() + " files transmitted.");
+            // Tell the client that the transmission was successful.
+            returnStatus.writeBoolean(true);
+            returnStatus.flush();
+            System.out.println("File transactions complete.");
             ois.close();
-            return; // Kill the thread. 
-            
-            
-            
-            
         } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("Disaster!");
+            // Don't do anything -- the client will be notified by a drop of
+            // connection and can try again.
         }
-        
-        
     }
 }
-
-
