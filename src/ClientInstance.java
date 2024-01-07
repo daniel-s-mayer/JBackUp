@@ -19,8 +19,22 @@ class ClientGUI implements Runnable {
 
     @Override
     public void run() {
-        // Initialize the file utilities
-        FileUtilities fu = new FileUtilities();
+        
+        // Go ahead and set the look and feel.
+
+        try {
+            for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
+                if ("Windows".equals(info.getName())) {
+                    UIManager.setLookAndFeel(info.getClassName());
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            // If Nimbus is not available, you can set the GUI to another look and feel.
+            //UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+        }
+        
+
 
         JFrame clientFrame = new JFrame("Client Manager");
         JPanel contentForm = new JPanel(new GridLayout(0, 1));

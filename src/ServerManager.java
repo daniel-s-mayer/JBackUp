@@ -3,29 +3,56 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.*;
-import java.util.Arrays;
 
+/**
+ * This class handles the server management GUI, including user management and server settings management.
+ */
 public class ServerManager {
     public static void main(String[] args) {
-        // Handle opening/creating the storage server
+        // Read the existing server settings file from the filesystem (or show prompts to create a new one).
         ServerUtilities su = new ServerUtilities();
         StorageServer storeServe = su.readFromFilesystem();
-       
+        
        // Start the GUI component
         SwingUtilities.invokeLater(new ServerGUI(storeServe));
     }
 }
 
+/**
+ * Implements the GUI components of the server management utility, including the graphical inputs of user and server 
+ * information. 
+ * 
+ * Uses a main JFrame and updates panels within it.
+ */
 class ServerGUI implements Runnable {
+    // The current StorageServer data object being used.
     StorageServer storeServ;
+
+    /**
+     * Constructor for a new GUI instance.
+     * @param storeServ Data file for the current server of concern.
+     */
     ServerGUI(StorageServer storeServ) {
         this.storeServ = storeServ;
     }
     
     @Override
     public void run() {
+        // Immediately set the look and feel
+        try {
+            for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
+                if ("Windows".equals(info.getName())) {
+                    UIManager.setLookAndFeel(info.getClassName());
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            // If Nimbus is not available, you can set the GUI to another look and feel.
+            //UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+        }
+        
         JFrame mainFrame = new JFrame("Server Management Utility");
-        mainFrame.setSize(800, 800);
+        mainFrame.setSize(1000, 800);
         // Create the stop/start/restart menu bar
         JMenuBar menuBar = new JMenuBar();
         JButton stopButton = new JButton("Stop Server");
@@ -76,20 +103,20 @@ class ServerGUI implements Runnable {
         // Main screen layout
         
         JPanel mainPanel = new JPanel();
-        GridBagLayout gridLayout = new GridBagLayout();
         JButton manageUsers = new JButton("Manage Users");
+        manageUsers.setPreferredSize(new Dimension(250, 100));
+        manageUsers.setIcon(new ImageIcon(getClass().getResource("user.png")));
+        manageUsers.setFont(new Font("Arial", Font.BOLD, 14));
+        manageUsers.setPreferredSize(new Dimension(250, 100));
         JButton manageServerSettings = new JButton("Server Settings");
-        mainPanel.setLayout(gridLayout);
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.gridwidth = 2;
-        mainPanel.add(manageUsers, gbc);
-        gbc.gridx = 1;
-        gbc.gridy = 0;
-        gbc.gridwidth = 1;
-        mainPanel.add(manageUsers, gbc);
-        mainPanel.add(manageServerSettings);
+        manageServerSettings.setFont(new Font("Arial", Font.BOLD, 14));
+        manageServerSettings.setPreferredSize(new Dimension(250, 100));
+        manageServerSettings.setIcon(new ImageIcon(getClass().getResource("settings.png")));
+
+        JPanel mainButtonsPanel = new JPanel();
+        mainButtonsPanel.add(manageUsers);
+        mainButtonsPanel.add(manageServerSettings);
+        mainPanel.add(mainButtonsPanel, BorderLayout.CENTER);
         
         // Server settings panel
         JPanel serverSettingsPanel = new JPanel();
@@ -325,26 +352,60 @@ class ServerUtilities {
         }  catch (Exception ie) {
             // The user doesn't have server settings, so let's create them.
             // Create the panel
-            JPanel setupPanel = new JPanel();
-            JTextField portInput = new JTextField("Port:");
-            JTextField pathInput = new JTextField("Path:");
-            setupPanel.add(portInput);
-            setupPanel.add(pathInput);
-            String.valueOf(JOptionPane.showConfirmDialog(null, setupPanel));
+            while (true) {
+                try {
+                    JPanel setupPanel = new JPanel(new GridLayout(0, 1));
+                    JPanel portPanel = new JPanel();
+                    JPanel pathPanel = new JPanel();
+                    JLabel portLabel = new JLabel("Server Port:");
+                    JTextField portInput = new JTextField("", 10);
+                    portPanel.add(portLabel);
+                    portPanel.add(portInput);
+                    JButton pathButton = new JButton("Choose Directory");
+                    JLabel pathLabel = new JLabel("Data Storage Path:");
+                    JFileChooser pathChooser = new JFileChooser();
+                    pathPanel.add(pathLabel);
+                    pathPanel.add(pathButton);
+                    pathButton.addActionListener(new ActionListener() {
+                        @Override
+                        public void actionPerformed(ActionEvent e) {
+                            // ** TODO Add error handling. 
+                            pathChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                            pathChooser.showOpenDialog(null);
+                        }
+                    });
+                    String basePath = "";
+                    int port = 0;
+                    
+                    setupPanel.add(portPanel);
+                    setupPanel.add(pathPanel);
+                   int result = JOptionPane.showConfirmDialog(null, setupPanel, "Initial Setup", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+                   if (result == 0) {
+                       port = Integer.valueOf(portInput.getText());
+                       basePath = pathChooser.getSelectedFile().getAbsolutePath();
+                   } else {
+                       break; // The user canceled.
+                   }
+                    // Read the values and create storeServe.
+                    storeServe = new StorageServer(port, basePath);
 
-            // Read the values and create storeServe.
-            storeServe = new StorageServer(Integer.valueOf(portInput.getText()), pathInput.getText());
-
-            // Store the new serve.
-            try {
-                FileOutputStream fos = new FileOutputStream("myServer.dat");
-                ObjectOutputStream oos = new ObjectOutputStream(fos);
-                oos.writeObject(storeServe);
-                oos.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-                System.exit(99);
+                    // Store the new serve.
+                    try {
+                        FileOutputStream fos = new FileOutputStream("myServer.dat");
+                        ObjectOutputStream oos = new ObjectOutputStream(fos);
+                        oos.writeObject(storeServe);
+                        oos.close();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        System.exit(99);
+                    }
+                    break;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    JOptionPane.showMessageDialog(null, "Invalid input. Try again.");
+                }
             }
+           
         }
         return storeServe;
     }
@@ -403,7 +464,11 @@ class ServerUtilities {
     
     public JPanel generateUserJPanel(ServerInstance sm, User user, StorageServer storeServ, JPanel userContentPanel, JFrame mainFrame, JPanel userControlsPanel) {
         JPanel userJPanel = new JPanel();
-        userJPanel.add(new JLabel(user.getName() + " " + user.getUserName()));
+        String userJPText = String.format("%-20s     %-20s     ", user.getName(), user.getUserName());
+        System.out.println("Displaying:" + String.format("%-20s     %-20s     ", user.getName(), user.getUserName()));
+        JLabel userJPTextLabel = new JLabel(userJPText);
+        userJPTextLabel.setFont(new Font(Font.MONOSPACED, Font.BOLD, 14));
+        userJPanel.add(userJPTextLabel);//user.getName() + " " + user.getUserName()));
         JButton deleteUser = new JButton("Delete User");
         JButton changePassword = new JButton("Change User Password");
         userJPanel.add(deleteUser);
@@ -427,15 +492,20 @@ class ServerUtilities {
     public void processChange(ServerInstance sm, StorageServer storeServ, JPanel userContentPanel, JFrame mainFrame, JPanel userControlsPanel) {
         JPanel userListPanel = new JPanel();
         userListPanel.setLayout(new BoxLayout(userListPanel, BoxLayout.Y_AXIS));
+        int userCount = 0;
         for (User u : storeServ.getUsers()) {
             JPanel userJPanel = this.generateUserJPanel(sm, u, storeServ, userContentPanel, mainFrame, userControlsPanel);
-            userJPanel.setPreferredSize(new Dimension(500, 50));
+            userJPanel.setPreferredSize(new Dimension(800, 50));
             userListPanel.add(userJPanel);
+            userCount++;
         }
         JPanel view = new JPanel();
         JScrollPane jsp = new JScrollPane();
         jsp.setPreferredSize(new Dimension(1000, 500));
         jsp.setViewportView(view);
+        if (userCount == 0) {
+            userListPanel.add(new JLabel("No users yet."));
+        }
         view.add(userListPanel);
         userContentPanel.removeAll();
         userContentPanel.repaint();
