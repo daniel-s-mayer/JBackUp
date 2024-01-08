@@ -439,7 +439,7 @@ class ServerUtilities {
                     // The user's input must have been invalid at some point, so
                     // keep looping and ask again.
                     JOptionPane.showMessageDialog(
-                            null, "Invalid input. Try again.");
+                            null, "Invalid input. Try again (make sure that your port is >= 10000).");
                 }
             }
         }
@@ -458,6 +458,7 @@ class ServerUtilities {
             oos.writeUnshared(storeServe);
             oos.close();
         } catch (Exception e) {
+            e.printStackTrace();
             JOptionPane.showMessageDialog(
                     null, "Disaster! Unrecoverable error!");
             System.exit(
