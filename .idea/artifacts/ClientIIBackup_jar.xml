@@ -1,8 +1,0 @@
-<component name="ArtifactManager">
-  <artifact type="jar" name="ClientIIBackup:jar">
-    <output-path>$PROJECT_DIR$/out/artifacts/ClientIIBackup_jar</output-path>
-    <root id="archive" name="Backup.jar">
-      <element id="module-output" name="Backup" />
-    </root>
-  </artifact>
-</component>
